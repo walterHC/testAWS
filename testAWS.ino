@@ -30,7 +30,7 @@ void connectAWS() {
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print(".");
+    Serial.print("w");
   }
 
   // Configure WiFiClientSecure to use the AWS IoT device credentials
@@ -47,7 +47,7 @@ void connectAWS() {
   Serial.println("Connecting to AWS IoT");
 
   while (!client.connect(THINGNAME)) {
-    Serial.print(".");
+    Serial.print("a");
     delay(100);
   }
 
@@ -65,7 +65,7 @@ void connectAWS() {
 void publishMessageMovile() {
   int sensorValue = analogRead(MQ_PIN);
 
-  // [1] Get current time
+  [1] Get current time
   struct tm timeinfo;
 
   if (!getLocalTime(&timeinfo)) {
@@ -73,14 +73,14 @@ void publishMessageMovile() {
     return;
   }
 
-  // [1.1] Format current time
+  [1.1] Format current time
   char timestamp[20];
   snprintf(timestamp, sizeof(timestamp), "%04d-%02d-%02d %02d:%02d:%02d",
            timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
            timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 
   // [2] Send JSON data
-  StaticJsonDocument<400> doc;  // Aumenta el tamaño del documento para acomodar el nuevo formato
+  StaticJsonDocument<400> doc;
   JsonArray sensorsArray = doc.createNestedArray("Sensors");
   JsonObject dataObj = sensorsArray.createNestedObject();
   dataObj["timestamp"] = String(timestamp);
@@ -96,17 +96,29 @@ void publishMessageMovile() {
 
 void messageHandler(String &topic, String &payload) {
 
-  Serial.print("incoming: ");
-  Serial.println(topic);
+  Serial.print("Incoming: [");
+  Serial.print(topic);
+  Serial.println("]");
 
+  // Parse the JSON payload
   StaticJsonDocument<200> doc;
   deserializeJson(doc, payload);
-  const char *message = doc["message"];
-  Serial.println(message);
-  if (strcmp(message, "prender") == 0) {
-    digitalWrite(LED_BUILTIN, HIGH);
+  int action = doc["action"];  //se espera recibir cadena
+  int value = atoi(doc["value"]);  //se espera recibir un valor numerico
+
+
+  value = value % 10000;
+
+  // Escalar intensity de [0, 10000] a [0, 100]
+  int scaledValue = map(intensity, 0, 10000, 0, 100);
+
+  if (strcmp(action, "prender") == 0) {
+    int pwmValue = map(scaledValue, 0, 100, 0, 255);
+    ledcWrite(LED_CHANNEL, pwmValue);
+
   } else {
-    digitalWrite(LED_BUILTIN, LOW);
+    ledcWrite(LED_CHANNEL, 0);
+
   }
 }
 
@@ -115,6 +127,8 @@ void setup() {
 
   // Configure NTP server
   configTime(0, 0, "pool.ntp.org");
+
+  setupLed();
 
   connectAWS();
   pinMode(LED_BUILTIN, OUTPUT);
@@ -131,4 +145,11 @@ void loop() {
 
   client.loop();
   delay(1000);
+}
+
+// Setup Led
+void setupLed() {
+  pinMode(LED_PIN, OUTPUT);
+  ledcSetup(LED_CHANNEL, frequency, resolution);
+  ledcAttachPin(LED_PIN, LED_CHANNEL);
 }
